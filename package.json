@@ -1,0 +1,16 @@
+{
+  "name": "hub-server",
+  "version": "1.0.0",
+  "description": "WebSocket Hub for Playwright Streams",
+  "main": "hub.js",
+  "scripts": {
+    "start": "node hub.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.17.0"  // Phiên bản có thể khác
+  }
+}
