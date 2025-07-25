@@ -1,38 +1,19 @@
-# Sử dụng image Python chuẩn
-FROM python:3.10-slim
+# Use official Python image
+FROM python:3.11-slim
 
-# Cài đặt các gói cần thiết
-RUN apt-get update && apt-get install -y \
-    curl \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    wget \
-    xdg-utils \
-    && rm -rf /var/lib/apt/lists/*
-
-# Tạo thư mục app
+# Set work directory
 WORKDIR /app
 
-# Copy file requirements trước
+# Copy requirements and source code
 COPY requirements.txt .
+COPY server.py .
+COPY templates ./templates
 
-# Cài đặt các thư viện Python cần thiết
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy toàn bộ mã nguồn app vào container
-COPY . .
+# Expose port
+EXPOSE 10000
 
-# Chạy ứng dụng
+# Start server
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "10000"]
