@@ -1,16 +1,22 @@
 {
-  "name": "hub-server",
+  "name": "playwright-stream-hub",
   "version": "1.0.0",
-  "description": "WebSocket Hub for Playwright Streams",
+  "description": "A high-performance WebSocket hub for relaying Playwright screen streams from multiple workers to multiple viewers.",
   "main": "hub.js",
+  "author": "Your Name or Company <your.email@example.com>",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node hub.js",
+    "dev": "node --watch hub.js",
+    "lint": "echo 'Linting not configured yet.'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "ws": "^8.17.0"  // Phiên bản có thể khác
-  }
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {}
 }
