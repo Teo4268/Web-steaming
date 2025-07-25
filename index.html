@@ -2,62 +2,127 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Multi-Stream Viewer</title>
+    <title>Optimized Base64 Stream Viewer</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; grid-template-columns: 250px 1fr; grid-template-rows: auto 1fr; height: 100vh; margin: 0; background-color: #f4f4f9; }
-        header { grid-column: 1 / -1; padding: 15px 20px; background-color: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 20px; }
-        #status { font-weight: 500; }
+        header { grid-column: 1 / -1; padding: 15px 20px; background-color: #fff; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 20px; z-index: 10; }
+        #status, #fps-display { font-weight: 500; }
         #current-stream { font-weight: bold; color: #0056b3; }
         #sidebar { background-color: #fff; border-right: 1px solid #ddd; padding: 20px; overflow-y: auto; }
         #sidebar h2 { margin-top: 0; }
-        #stream-list button { display: block; width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; background-color: #f9f9f9; text-align: left; cursor: pointer; border-radius: 4px; }
+        #stream-list button { display: block; width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; background-color: #f9f9f9; text-align: left; cursor: pointer; border-radius: 4px; transition: background-color 0.2s; }
         #stream-list button:hover { background-color: #e9e9e9; }
         #stream-list button.active { background-color: #007bff; color: white; border-color: #0056b3; }
         main { background-color: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        #stream-image { max-width: 100%; max-height: 100%; object-fit: contain; }
+        #stream-image { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: -webkit-optimize-contrast; /* Giúp ảnh nét hơn khi resize */ }
     </style>
 </head>
 <body>
     <header>
-        <div id="status">Đang kết nối tới Hub...</div>
+        <div id="status">Chưa kết nối</div>
         <div>Đang xem: <span id="current-stream">Không có</span></div>
+        <div id="fps-display">FPS: 0</div>
     </header>
     <aside id="sidebar">
         <h2>Streams Đang Hoạt Động</h2>
-        <div id="stream-list">
-            <p>Đang chờ danh sách...</p>
-        </div>
+        <div id="stream-list"><p>Đang chờ danh sách...</p></div>
     </aside>
     <main>
-        <img id="stream-image" alt="Vui lòng chọn một stream từ danh sách bên trái" />
+        <img id="stream-image" alt="Vui lòng chọn một stream" />
     </main>
 
 <script>
-    const HUB_URL = 'wss://web-steaming.onrender.com/viewer'; // <<< THAY ĐỔI ĐỊA CHỈ NÀY
+    // --- Cấu hình ---
+    const HUB_URL = 'wss://web-steaming.onrender.com/viewer';
 
+    // --- Lấy các phần tử DOM ---
     const statusEl = document.getElementById('status');
     const streamListEl = document.getElementById('stream-list');
     const imageEl = document.getElementById('stream-image');
     const currentStreamEl = document.getElementById('current-stream');
+    const fpsDisplay = document.getElementById('fps-display');
 
+    // --- Logic hiển thị tối ưu ---
+    let frameQueue = [];
+    let isRendering = false;
+    let lastFrameTime = performance.now();
+    let frameCount = 0;
+
+    function renderLoop() {
+        if (frameQueue.length > 0) {
+            // Chỉ lấy frame cuối cùng trong queue để giảm độ trễ
+            const latestFrameData = frameQueue.pop(); 
+            frameQueue = []; // Xóa các frame cũ hơn
+
+            // Tối ưu quan trọng: Gán thẳng chuỗi base64 vào src
+            imageEl.src = `data:image/jpeg;base64,${latestFrameData}`;
+            
+            // Tính toán FPS
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFrameTime >= 1000) {
+                fpsDisplay.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+        }
+        requestAnimationFrame(renderLoop);
+    }
+    
+    // --- Logic WebSocket ---
     const socket = new WebSocket(HUB_URL);
 
+    socket.onopen = () => {
+        statusEl.textContent = 'Đã kết nối Hub';
+        statusEl.style.color = 'green';
+        // Bắt đầu vòng lặp render ngay khi kết nối
+        requestAnimationFrame(renderLoop);
+    };
+
+    socket.onmessage = (event) => {
+        // Chỉ cần đẩy dữ liệu vào queue, vòng lặp render sẽ xử lý
+        // event.data ở đây là chuỗi base64
+        if (typeof event.data === 'string') {
+            // Kiểm tra xem đây là tin nhắn control hay dữ liệu ảnh
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'SESSIONS_UPDATE') {
+                    updateStreamList(message.data);
+                }
+            } catch (e) {
+                // Nếu không parse được JSON, đây là dữ liệu ảnh base64
+                frameQueue.push(event.data);
+            }
+        }
+    };
+
+    socket.onclose = () => {
+        statusEl.textContent = 'Đã ngắt kết nối';
+        statusEl.style.color = 'red';
+        fpsDisplay.textContent = 'FPS: 0';
+    };
+    
+    socket.onerror = (err) => {
+        statusEl.textContent = 'Lỗi kết nối';
+        statusEl.style.color = 'red';
+        console.error('WebSocket Error:', err);
+    };
+
     function subscribeToStream(sessionId) {
-        console.log(`Gửi yêu cầu xem stream: ${sessionId}`);
         socket.send(JSON.stringify({ type: 'SUBSCRIBE', sessionId }));
         currentStreamEl.textContent = sessionId;
-        // Cập nhật trạng thái active cho button
         document.querySelectorAll('#stream-list button').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.sessionId === sessionId);
         });
+        // Reset bộ đếm FPS khi chuyển stream
+        frameCount = 0;
+        lastFrameTime = performance.now();
     }
 
     function updateStreamList(sessionIds) {
-        streamListEl.innerHTML = ''; // Xóa danh sách cũ
+        streamListEl.innerHTML = '';
         if (sessionIds.length === 0) {
-            streamListEl.innerHTML = '<p>Không có stream nào đang hoạt động.</p>';
-            currentStreamEl.textContent = "Không có";
-            imageEl.src = '';
+            streamListEl.innerHTML = '<p>Không có stream nào.</p>';
             return;
         }
         sessionIds.forEach(id => {
@@ -68,39 +133,6 @@
             streamListEl.appendChild(button);
         });
     }
-
-    socket.onopen = () => {
-        statusEl.textContent = 'Đã kết nối tới Hub';
-        statusEl.style.color = 'green';
-    };
-
-    socket.onmessage = (event) => {
-        // Tối ưu: Phân biệt control message (JSON) và image data (binary)
-        if (typeof event.data === 'string') {
-            const message = JSON.parse(event.data);
-            if (message.type === 'SESSIONS_UPDATE') {
-                updateStreamList(message.data);
-            }
-        } else if (event.data instanceof Blob) {
-            // Đây là dữ liệu ảnh, hiển thị nó
-            const imageUrl = URL.createObjectURL(event.data);
-            imageEl.src = imageUrl;
-            // Tối ưu bộ nhớ: giải phóng URL cũ sau khi ảnh mới được vẽ
-            imageEl.onload = () => URL.revokeObjectURL(imageEl.src);
-        }
-    };
-
-    socket.onclose = () => {
-        statusEl.textContent = 'Đã ngắt kết nối Hub';
-        statusEl.style.color = 'red';
-        streamListEl.innerHTML = '<p>Mất kết nối.</p>';
-    };
-
-    socket.onerror = (err) => {
-        console.error('WebSocket Error:', err);
-        statusEl.textContent = 'Lỗi kết nối';
-        statusEl.style.color = 'red';
-    };
 </script>
 </body>
 </html>
